@@ -141,7 +141,7 @@ class ClusterConfig(ABC, SerializableBaseModel):
 
 class LocalConfig(ClusterConfig):
     # The URL for the docker host. May be a TCP url or unix socket.
-    docker_host: str = "unix:///var/run/docker.sock"
+    docker_host: str = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
     local_network: bool = False  # whether to use network_mode="host"
     volumes_config: VolumesConfig = Field(default_factory=dict)
 
@@ -645,8 +645,10 @@ class BaseAlcatrazCluster(ABC):
 
         if self.runtime:
             runtime = self.runtime
+        elif self.is_nvidia_gpu_env:
+            runtime = "nvidia"
         else:
-            runtime = "nvidia" if self.is_nvidia_gpu_env else "runc"
+            runtime = None
 
         if runtime == "sysbox-runc":
             setup_cmds: list[str] = [
@@ -687,10 +689,10 @@ class BaseAlcatrazCluster(ABC):
             else:
                 network_mode = "tinydockernet-" + self.container_group_name
 
-            _, ctr = await self._create_container(
+            ctr_runtime = runtime if i == 0 else None
+            create_kwargs: dict[str, Any] = dict(
                 image=image,
                 name=f"container{i}-{self.container_group_name.split('alcatraz-')[1]}",
-                runtime=runtime if i == 0 else "runc",
                 device_requests=(
                     [docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])]
                     if self.is_nvidia_gpu_env and i == 0
@@ -708,6 +710,10 @@ class BaseAlcatrazCluster(ABC):
                 shm_size=self.shm_size if i == 0 else None,
                 mem_limit=self.mem_limit if i == 0 else None,
             )
+            if ctr_runtime:
+                create_kwargs["runtime"] = ctr_runtime
+
+            _, ctr = await self._create_container(**create_kwargs)
 
             self.containers.append(ctr)
 
