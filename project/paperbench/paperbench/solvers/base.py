@@ -1,4 +1,5 @@
 import json
+import os
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -75,9 +76,11 @@ class BasePBSolver(PythonCodingSolver, ABC):
 
     def _handle_docker_socket_mounting(self, task: PBTask) -> PBTask:
         if self.mount_docker_socket:
+            docker_host = os.environ.get("DOCKER_HOST", "unix:///var/run/docker.sock")
+            socket_path = docker_host.replace("unix://", "")
             volumes_config = VolumesConfig()
             volumes_config["dockersocket"] = {
-                "bind_source": "/var/run/docker.sock",
+                "bind_source": socket_path,
                 "bind_dest": "/var/run/docker.sock",
                 "mode": "rw",
             }
