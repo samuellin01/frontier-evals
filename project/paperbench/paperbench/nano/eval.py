@@ -170,13 +170,22 @@ class PaperBench(PythonCodingEval):
                         else NetworkMode.NONE,
                         cwd="/home",
                         environment={
-                            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", None),
-                            "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", None),
-                            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", None),
-                            "OPENROUTER_API_KEY": os.getenv("OPENROUTER_API_KEY", None),
-                            "SUBMISSION_DIR": SUBMISSION_DIR,
-                            "LOGS_DIR": LOGS_DIR,
-                            "AGENT_DIR": AGENT_DIR,
+                            k: v
+                            for k, v in {
+                                "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", None),
+                                "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", None),
+                                "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY", None),
+                                "OPENROUTER_API_KEY": os.getenv("OPENROUTER_API_KEY", None),
+                                "SUBMISSION_DIR": SUBMISSION_DIR,
+                                "LOGS_DIR": LOGS_DIR,
+                                "AGENT_DIR": AGENT_DIR,
+                                "http_proxy": os.getenv("http_proxy"),
+                                "https_proxy": os.getenv("https_proxy"),
+                                "HTTP_PROXY": os.getenv("HTTP_PROXY"),
+                                "HTTPS_PROXY": os.getenv("HTTPS_PROXY"),
+                                "no_proxy": os.getenv("no_proxy"),
+                            }.items()
+                            if v is not None
                         },
                         docker_image=self.docker_image,
                     )
