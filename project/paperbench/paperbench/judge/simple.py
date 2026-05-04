@@ -124,13 +124,26 @@ class SimpleJudge(Judge):
         """
         if `config` is provided, it is assumed that it will use `response_format` internally.
         If `config` is not provided,
-        we fallback to a default OpenAICompletionsStructuredCompleter config
+        we fallback to a default OpenAICompletionsStructuredCompleter config,
+        or to BedrockClaudeJudgeCompleter if the main completer is Bedrock-based.
         """
-        cfg = config or OpenAICompletionsTurnCompleter.Config(
-            model="gpt-4o-2024-08-06",
-            response_format=response_format,
-        )
-        return cfg, cfg.build()
+        if config is None:
+            from paperbench.solvers.basicagent.bedrock_completer import (
+                BedrockClaudeJudgeCompleter,
+                BedrockClaudeTurnCompleter,
+            )
+
+            if isinstance(self.completer, BedrockClaudeTurnCompleter):
+                config = BedrockClaudeJudgeCompleter.Config(
+                    model=self.completer.model,
+                    aws_region=self.completer.aws_region,
+                )
+            else:
+                config = OpenAICompletionsTurnCompleter.Config(
+                    model="gpt-4o-2024-08-06",
+                    response_format=response_format,
+                )
+        return config, config.build()
 
     async def process_file_content(self) -> None:
         """
