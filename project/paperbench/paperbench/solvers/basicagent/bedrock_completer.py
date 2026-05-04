@@ -346,6 +346,9 @@ class BedrockClaudeJudgeCompleter(TurnCompleter):
             )
 
 
+BedrockClaudeJudgeCompleterConfig = BedrockClaudeJudgeCompleter.Config
+
+
 class BedrockClaudeTurnCompleterConfig(
     BedrockClaudeTurnCompleter.Config, BasicAgentTurnCompleterConfig
 ):
