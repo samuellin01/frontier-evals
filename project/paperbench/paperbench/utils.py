@@ -52,9 +52,12 @@ def purple(text: str) -> str:
 
 
 def is_docker_running(timeout: float = 10.0) -> bool:
-    """Return `True` if and only if Docker is running."""
+    """Return `True` if and only if Docker (or a compatible runtime like Podman) is running."""
 
     try:
+        docker_host = os.environ.get("DOCKER_HOST")
+        if docker_host:
+            return DockerClient(base_url=docker_host, timeout=timeout).ping()
         return DockerClient(timeout=timeout).ping()
     except DockerException:
         return False
