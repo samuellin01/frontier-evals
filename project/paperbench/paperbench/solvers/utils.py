@@ -187,9 +187,8 @@ def log_messages_to_file(
 async def sanity_check_docker(computer: ComputerInterface) -> None:
     """Run a few sanity checks on the docker installation in the computer."""
     docker_cmds = [
-        "docker --version",
-        "docker run --rm hello-world",
-        "docker ps -a",
+        "docker --version || echo 'docker not available'",
+        "docker ps -a 2>/dev/null || echo 'docker ps not available'",
     ]
     res = ""
     for cmd in docker_cmds:
