@@ -253,6 +253,99 @@ class BedrockClaudeTurnCompleter(TurnCompleter):
             )
 
 
+class BedrockClaudeJudgeCompleter(TurnCompleter):
+    """Bedrock Claude completer for judge structured output (returns JSON)."""
+
+    def __init__(
+        self,
+        model: str = "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        aws_region: str = "us-east-1",
+        max_tokens: int = 4096,
+        retry_config: RetryConfig | None = None,
+    ):
+        self.model = model
+        self.aws_region = aws_region
+        self.max_tokens = max_tokens
+        self.retry_config = retry_config or RetryConfig()
+        self.encoding_name = "cl100k_base"
+        self.n_ctx = 200000
+        self._client = anthropic.AnthropicBedrock(aws_region=aws_region)
+
+    @override
+    def completion(
+        self,
+        conversation: TurnCompleter.RuntimeConversation,
+        **params: Unpack[TurnCompleter.Params],
+    ) -> TurnCompleter.Completion:
+        raise NotImplementedError("Use async_completion instead")
+
+    @override
+    async def async_completion(
+        self,
+        conversation: TurnCompleter.RuntimeConversation,
+        **params: Unpack[TurnCompleter.Params],
+    ) -> TurnCompleter.Completion:
+        system_prompt, claude_messages = _convert_oai_messages_to_claude(conversation)
+
+        json_instruction = (
+            "\n\nYou MUST respond with ONLY a valid JSON object, no markdown fencing, "
+            "no extra text. The JSON must have these fields: "
+            '"valid_score" (boolean), "score" (number), "explanation" (string).'
+        )
+        if system_prompt:
+            system_prompt += json_instruction
+        else:
+            system_prompt = json_instruction.strip()
+
+        api_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": claude_messages,
+            "max_tokens": self.max_tokens,
+            "system": system_prompt,
+        }
+
+        rc = self.retry_config
+        retry = tenacity.AsyncRetrying(
+            wait=tenacity.wait_exponential(min=rc.wait_min, max=rc.wait_max),
+            stop=tenacity.stop_after_delay(rc.stop_after),
+            retry=tenacity.retry_if_exception_type(BEDROCK_RETRY_EXCEPTIONS),
+            reraise=True,
+        )
+        async for attempt in retry:
+            with attempt:
+                response = self._client.messages.create(**api_kwargs)
+
+        text = ""
+        for block in response.content:
+            if block.type == "text":
+                text += block.text
+
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            lines = [l for l in lines if not l.startswith("```")]
+            text = "\n".join(lines).strip()
+
+        output_messages = [ChatCompletionMessage(role="assistant", content=text)]
+        return TurnCompleter.Completion(
+            input_conversation=conversation,
+            output_messages=output_messages,
+        )
+
+    class Config(TurnCompleter.Config):
+        model: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        aws_region: str = "us-east-1"
+        max_tokens: int = 4096
+
+        @override
+        def build(self) -> BedrockClaudeJudgeCompleter:
+            return BedrockClaudeJudgeCompleter(
+                model=self.model,
+                aws_region=self.aws_region,
+                max_tokens=self.max_tokens,
+            )
+
+
 class BedrockClaudeTurnCompleterConfig(
     BedrockClaudeTurnCompleter.Config, BasicAgentTurnCompleterConfig
 ):
