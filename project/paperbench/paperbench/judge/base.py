@@ -100,6 +100,12 @@ class Judge(ABC):
                 int(timestamp), tz=timezone.utc
             )
 
+    @staticmethod
+    def _count_leaves(task: TaskNode) -> int:
+        if task.is_leaf():
+            return 1
+        return sum(Judge._count_leaves(s) for s in task.sub_tasks)
+
     async def judge(
         self,
         root_task: TaskNode | None = None,
@@ -115,6 +121,10 @@ class Judge(ABC):
 
         if root_task is None:
             root_task = self.rubric
+
+        self._graded_count = 0
+        self._total_leaves = self._count_leaves(root_task)
+        logger.info(f"Starting grading: {self._total_leaves} leaf criteria to evaluate")
 
         return await self.grade(root_task, grade_leaf_fn)
 
@@ -136,14 +146,25 @@ class Judge(ABC):
         try:
             if current_depth >= self.max_depth and not task.is_leaf():
                 logger.info(f"Max depth reached for task {task.id}. Approximating entire subtree.")
-                return await self.grade_subtree(task)
+                result = await self.grade_subtree(task)
+                self._graded_count = getattr(self, "_graded_count", 0) + 1
+                total = getattr(self, "_total_leaves", "?")
+                logger.info(f"Grading progress: {self._graded_count}/{total} (subtree, score={result.score:.2f})")
+                return result
             elif task.is_leaf():
-                return await grade_leaf_fn(task)
+                result = await grade_leaf_fn(task)
+                self._graded_count = getattr(self, "_graded_count", 0) + 1
+                total = getattr(self, "_total_leaves", "?")
+                logger.info(f"Grading progress: {self._graded_count}/{total} (score={result.score})")
+                return result
         except openai.RateLimitError as e:
             logger.exception(f"Rate limit error while grading leaf {task.id}: {e}")
             raise
         except Exception as e:
             logger.exception(f"Grading leaf {task.id} failed!\n{e}")
+            self._graded_count = getattr(self, "_graded_count", 0) + 1
+            total = getattr(self, "_total_leaves", "?")
+            logger.info(f"Grading progress: {self._graded_count}/{total} (FAILED: {e})")
             return GradedTaskNode.from_task(
                 task,
                 score=0.0,
