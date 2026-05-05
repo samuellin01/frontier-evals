@@ -133,7 +133,7 @@ class SimpleJudge(Judge):
                 BedrockClaudeTurnCompleter,
             )
 
-            if isinstance(self.completer, BedrockClaudeTurnCompleter):
+            if isinstance(self.completer, (BedrockClaudeTurnCompleter, BedrockClaudeJudgeCompleter)):
                 config = BedrockClaudeJudgeCompleter.Config(
                     model=self.completer.model,
                     aws_region=self.completer.aws_region,
