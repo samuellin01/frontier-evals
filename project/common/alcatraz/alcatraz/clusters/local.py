@@ -646,7 +646,11 @@ class BaseAlcatrazCluster(ABC):
         if self.runtime:
             runtime = self.runtime
         elif self.is_nvidia_gpu_env:
-            runtime = "nvidia"
+            import shutil
+            if shutil.which("nvidia-container-cli"):
+                runtime = "nvidia"
+            else:
+                runtime = None
         else:
             runtime = None
 
@@ -690,12 +694,51 @@ class BaseAlcatrazCluster(ABC):
                 network_mode = "tinydockernet-" + self.container_group_name
 
             ctr_runtime = runtime if i == 0 else None
+
+            gpu_needs_manual_passthrough = (
+                self.is_nvidia_gpu_env and i == 0 and runtime != "nvidia"
+            )
+
+            if gpu_needs_manual_passthrough:
+                import glob
+                import os
+                import shutil
+                import tempfile
+
+                nvidia_lib_dir = tempfile.mkdtemp(prefix="nvidia-libs-")
+                for pattern in ["/usr/lib64/libnvidia*.so*", "/usr/lib64/libcuda*.so*",
+                                "/usr/lib64/libnvcuvid*.so*", "/usr/lib64/libnvoptix*.so*"]:
+                    for lib in glob.glob(pattern):
+                        if os.path.isfile(lib):
+                            shutil.copy2(lib, nvidia_lib_dir, follow_symlinks=False)
+
+                gpu_volumes = {
+                    nvidia_lib_dir: {"bind": "/usr/local/nvidia/lib64", "mode": "ro"},
+                }
+                if os.path.exists("/usr/bin/nvidia-smi"):
+                    gpu_volumes["/usr/bin/nvidia-smi"] = {"bind": "/usr/bin/nvidia-smi", "mode": "ro"}
+
+                environment["LD_LIBRARY_PATH"] = "/usr/local/nvidia/lib64"
+
+                gpu_devices = [
+                    f"/dev/{d}" for d in os.listdir("/dev")
+                    if d.startswith("nvidia")
+                ]
+            else:
+                gpu_volumes = {}
+                gpu_devices = []
+
+            merged_volumes = {}
+            if i == 0 and volume_config:
+                merged_volumes.update(volume_config)
+            merged_volumes.update(gpu_volumes)
+
             create_kwargs: dict[str, Any] = dict(
                 image=image,
                 name=f"container{i}-{self.container_group_name.split('alcatraz-')[1]}",
                 device_requests=(
                     [docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])]
-                    if self.is_nvidia_gpu_env and i == 0
+                    if self.is_nvidia_gpu_env and i == 0 and runtime == "nvidia"
                     else []
                 ),
                 stdin_open=True,
@@ -705,11 +748,13 @@ class BaseAlcatrazCluster(ABC):
                 network_mode=network_mode,
                 user=0,
                 environment=environment,
-                volumes=(i == 0 and volume_config) or {},
+                volumes=merged_volumes,
                 privileged=self.privileged and i == 0,
                 shm_size=self.shm_size if i == 0 else None,
                 mem_limit=self.mem_limit if i == 0 else None,
             )
+            if gpu_devices:
+                create_kwargs["devices"] = [f"{d}:{d}:rwm" for d in gpu_devices]
             if ctr_runtime:
                 create_kwargs["runtime"] = ctr_runtime
 
