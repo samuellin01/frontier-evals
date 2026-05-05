@@ -124,7 +124,7 @@ class Judge(ABC):
 
         self._graded_count = 0
         self._total_leaves = self._count_leaves(root_task)
-        logger.info(f"Starting grading: {self._total_leaves} leaf criteria to evaluate")
+        print(f"[Judge] Starting grading: {self._total_leaves} leaf criteria to evaluate", flush=True)
 
         return await self.grade(root_task, grade_leaf_fn)
 
@@ -149,13 +149,13 @@ class Judge(ABC):
                 result = await self.grade_subtree(task)
                 self._graded_count = getattr(self, "_graded_count", 0) + 1
                 total = getattr(self, "_total_leaves", "?")
-                logger.info(f"Grading progress: {self._graded_count}/{total} (subtree, score={result.score:.2f})")
+                print(f"[Judge] {self._graded_count}/{total} score={result.score:.2f} (subtree)", flush=True)
                 return result
             elif task.is_leaf():
                 result = await grade_leaf_fn(task)
                 self._graded_count = getattr(self, "_graded_count", 0) + 1
                 total = getattr(self, "_total_leaves", "?")
-                logger.info(f"Grading progress: {self._graded_count}/{total} (score={result.score})")
+                print(f"[Judge] {self._graded_count}/{total} score={result.score} | {task.requirements[:80]}", flush=True)
                 return result
         except openai.RateLimitError as e:
             logger.exception(f"Rate limit error while grading leaf {task.id}: {e}")
@@ -164,7 +164,7 @@ class Judge(ABC):
             logger.exception(f"Grading leaf {task.id} failed!\n{e}")
             self._graded_count = getattr(self, "_graded_count", 0) + 1
             total = getattr(self, "_total_leaves", "?")
-            logger.info(f"Grading progress: {self._graded_count}/{total} (FAILED: {e})")
+            print(f"[Judge] {self._graded_count}/{total} FAILED: {str(e)[:100]}", flush=True)
             return GradedTaskNode.from_task(
                 task,
                 score=0.0,
